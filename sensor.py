@@ -18,7 +18,9 @@ class HeatingStrategy(Entity):
         self._percent = percent
         self._horizon = horizon
         LOGGER.info(self._tibber_home.info)
-        self._name = tibber_home.info["viewer"]["home"]["address"].get("address1", "")
+        home_info = tibber_home.info["viewer"]["home"]
+        self._name = home_info["address"].get("address1", "")
+        self._home_id = home_info.get("id", self._name)
 
     @property
     def name(self):
@@ -50,18 +52,18 @@ class HeatingStrategy(Entity):
         """Return a unique ID."""
         return "Heating Strategy"
 
-    def get_prices(self, time_from = None, time_to = None):
-        return [v for k, v in self._tibber_home.price_total.items() if (not time_from or dt.parse_datetime(k) >= time_from) and (not time_to or dt.parse_datetime(k) <= time_to)]
+    def get_prices(self, time_from=None, time_to=None):
+        return [v for k, v in self._tibber_home.price_total.items() if (not time_from or dt.parse_datetime(k) >= time_from) and (not time_to or dt.parse_datetime(k) < time_to)]
 
-    def get_average_price(self, time_from = None, time_to = None):
+    def get_average_price(self, time_from=None, time_to=None):
         values = self.get_prices(time_from, time_to)
         LOGGER.debug(values)
         if len(values) == 0:
-            return 0
+            return None
         return sum(values) / len(values)
 
     @property
-    def device_state_attributes(self):
+    def extra_state_attributes(self):
         """Return the state attributes."""
         return self.data()
 
@@ -70,11 +72,13 @@ class HeatingStrategy(Entity):
         datehour = dt.now()
         res['datehour_now'] = datehour.replace(minute=0, second=0, microsecond=0)
         res['datehour_coming'] = res['datehour_now'] + datetime.timedelta(hours=1)
-        res['datehour_coming_end'] = res['datehour_now'] + datetime.timedelta(hours=self._horizon)
-        res['average_price'] = self.get_average_price(res['datehour_now'])
-        res['price_now'] = self.get_average_price(res['datehour_now'], res['datehour_now'])
+        res['datehour_coming_end'] = res['datehour_now'] + datetime.timedelta(hours=self._horizon + 1)
+        res['price_now'] = self.get_average_price(res['datehour_now'], res['datehour_now'] + datetime.timedelta(hours=1))
         res['price_coming'] = self.get_average_price(res['datehour_coming'], res['datehour_coming_end'])
-        if not res['price_now'] or not res['price_coming']:
+        res['average_price'] = self.get_average_price(res['datehour_now'], res['datehour_coming_end'])
+        if res['price_now'] is None or res['price_coming'] is None or res['average_price'] is None:
+            return None
+        if res['average_price'] == 0:
             return None
 
         res['delta'] = res['price_coming'] - res['price_now']
@@ -85,9 +89,10 @@ class HeatingStrategy(Entity):
     def state(self):
         """Return the state of the device."""
         d = self.data()
+        if d is None:
+            return None
 
         LOGGER.info(f"Price now: {d['price_now']}, Price coming: {d['price_coming']}, Average price: {d['average_price']}, Delta: {d['delta']}, PricePercent: {d['delta_percent']}")
-
 
         if d['delta_percent'] > self._percent:
             return "BOOST"
