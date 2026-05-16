@@ -1,0 +1,11 @@
+{
+  "domain": "jimmy_custom",
+  "name": "Jimmy Custom",
+  "version": "4.3.0",
+  "codeowners": ["@jimmyw"],
+  "documentation": "https://github.com/jimmyw",
+  "issue_tracker": "https://github.com/jimmyw",
+  "iot_class": "local_polling",
+  "after_dependencies": ["tibber"],
+  "dependencies": []
+}
