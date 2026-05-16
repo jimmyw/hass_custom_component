@@ -6,6 +6,6 @@
   "documentation": "https://github.com/jimmyw",
   "issue_tracker": "https://github.com/jimmyw",
   "iot_class": "local_polling",
-  "after_dependencies": ["tibber"],
+  "after_dependencies": ["nordpool"],
   "dependencies": []
 }
