@@ -20,10 +20,12 @@ VAT_MULTIPLIER = 1.25
 SOLAR_SELL_ADDER = 0.09  # SEK/kWh
 # Heating system power draw
 HEATING_LOAD_KW = 3.5
+# How far ahead to compare prices (hours)
+LOOK_AHEAD_HOURS = 3
 
 
 class HeatingStrategy(Entity):
-    def __init__(self, percent=20.0, horizon=3):
+    def __init__(self, percent=20.0, horizon=LOOK_AHEAD_HOURS):
         self._percent = percent
         self._horizon = horizon
 
