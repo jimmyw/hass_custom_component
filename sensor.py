@@ -1,63 +1,69 @@
-"""Jimmy custom"""
+"""Jimmy custom heating strategy sensor."""
 import logging
 import datetime
 
-from homeassistant.const import EVENT_HOMEASSISTANT_START
-from homeassistant.helpers import discovery
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt
 
-DOMAIN = "jimmy_custom"
+from .config_flow import (
+    CONF_NAME,
+    CONF_NORDPOOL_ENTITY,
+    CONF_SOLAR_FORECAST_DOMAIN,
+    CONF_TIBBER_FEE,
+    CONF_GRID_FEE,
+    CONF_VAT_MULTIPLIER,
+    CONF_SOLAR_SELL_ADDER,
+    CONF_HEATING_LOAD_KW,
+    CONF_LOOK_AHEAD_HOURS,
+    CONF_THRESHOLD_PERCENT,
+)
+
 LOGGER = logging.getLogger(__name__)
 
-# Nordpool spot price sensor (without VAT)
-NORDPOOL_ENTITY = "sensor.nordpool_kwh_se3_sek_3_10_0"
-# Fees added on top of spot price before VAT
-TIBBER_FEE = 0.06  # SEK/kWh - Tibber markup
-GRID_FEE = 0.52    # SEK/kWh - grid transfer fee (nätavgift)
-VAT_MULTIPLIER = 1.25
-# Solar sell-back: opportunity cost = nordpool spot + this adder
-SOLAR_SELL_ADDER = 0.09  # SEK/kWh
-# Heating system power draw
-HEATING_LOAD_KW = 3.5
-# How far ahead to compare prices (hours)
-LOOK_AHEAD_HOURS = 3
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the sensor from a config entry."""
+    LOGGER.info("jimmy_custom sensor async_setup_entry: %s", entry.title)
+    async_add_entities([HeatingStrategy(entry)])
 
 
 class HeatingStrategy(Entity):
-    def __init__(self, percent=20.0, horizon=LOOK_AHEAD_HOURS):
-        self._percent = percent
-        self._horizon = horizon
+    def __init__(self, entry: ConfigEntry):
+        self._entry = entry
+        self._attr_has_entity_name = True
+
+    @property
+    def _conf(self):
+        return self._entry.data
 
     @property
     def name(self):
-        """Return the name of the sensor."""
-        return "Heating strategy"
+        return self._conf[CONF_NAME]
 
     @property
     def available(self):
-        """Return True if entity is available."""
         return True
 
     @property
     def icon(self):
-        """Return the icon to use in the frontend."""
         return "mdi:thermometer"
 
     @property
     def unique_id(self):
-        """Return a unique ID."""
-        return "Heating Strategy"
+        return f"heating_strategy_{self._entry.entry_id}"
 
     def get_nordpool_raw_prices(self):
-        """Get raw today+tomorrow price entries from Nordpool sensor.
-
-        Each entry has 'start', 'end' (datetime) and 'value' (SEK/kWh).
-        Works with both hourly and 15-minute price intervals.
-        """
+        """Get raw today+tomorrow price entries from Nordpool sensor."""
         if not self.hass:
             return []
-        state = self.hass.states.get(NORDPOOL_ENTITY)
+        state = self.hass.states.get(self._conf[CONF_NORDPOOL_ENTITY])
         if state is None:
             return []
         attrs = state.attributes
@@ -92,18 +98,17 @@ class HeatingStrategy(Entity):
         """Get consumer price from a spot price: (spot + fees) × VAT."""
         if spot is None:
             return None
-        return (spot + TIBBER_FEE + GRID_FEE) * VAT_MULTIPLIER
+        c = self._conf
+        return (spot + c[CONF_TIBBER_FEE] + c[CONF_GRID_FEE]) * c[CONF_VAT_MULTIPLIER]
 
     def get_solar_forecast_kwh(self, target_hour):
-        """Get total solar energy forecast (kWh) for a specific hour.
-
-        Sums forecasts from all forecast_solar config entries (east + west roof).
-        """
+        """Get total solar energy forecast (kWh) for a specific hour."""
         if not self.hass:
             return 0.0
         total_wh = 0
         entries_found = 0
-        for entry in self.hass.config_entries.async_entries("forecast_solar"):
+        domain = self._conf[CONF_SOLAR_FORECAST_DOMAIN]
+        for entry in self.hass.config_entries.async_entries(domain):
             if not hasattr(entry, 'runtime_data') or not entry.runtime_data:
                 continue
             estimate = entry.runtime_data.data
@@ -121,13 +126,7 @@ class HeatingStrategy(Entity):
         return result
 
     def get_effective_price(self, spot, target_hour):
-        """Calculate effective heating cost considering solar production.
-
-        Without solar: consumer price (spot + fee + VAT).
-        With solar covering the load: opportunity cost (spot + 0.09 SEK/kWh).
-        Partial solar: weighted average of the two.
-        target_hour is rounded to the hour for solar forecast lookup.
-        """
+        """Calculate effective heating cost considering solar production."""
         consumer = self.get_consumer_price(spot)
         if consumer is None:
             return None
@@ -136,8 +135,9 @@ class HeatingStrategy(Entity):
         if solar_kwh <= 0:
             LOGGER.debug("Effective price at %s: %.4f (no solar)", target_hour, consumer)
             return consumer
-        sell_price = spot + SOLAR_SELL_ADDER
-        solar_fraction = min(solar_kwh / HEATING_LOAD_KW, 1.0)
+        c = self._conf
+        sell_price = spot + c[CONF_SOLAR_SELL_ADDER]
+        solar_fraction = min(solar_kwh / c[CONF_HEATING_LOAD_KW], 1.0)
         effective = solar_fraction * sell_price + (1.0 - solar_fraction) * consumer
         LOGGER.debug("Effective price at %s: %.4f (solar=%.1f%%, consumer=%.4f, sell=%.4f)", target_hour, effective, solar_fraction * 100, consumer, sell_price)
         return effective
@@ -158,23 +158,21 @@ class HeatingStrategy(Entity):
 
     @property
     def extra_state_attributes(self):
-        """Return the state attributes."""
         return self.data()
 
     def data(self):
         res = {}
         now = dt.now()
         res['now'] = now
-        # Next slot boundary: start of the slot after the current one
         res['coming_start'] = now.replace(second=0, microsecond=0)
-        # Find the end of the current slot to know where "coming" starts
         for entry in self.get_nordpool_raw_prices():
             if (entry.get('start') is not None
                     and entry.get('end') is not None
                     and entry['start'] <= now < entry['end']):
                 res['coming_start'] = entry['end']
                 break
-        res['coming_end'] = now + datetime.timedelta(hours=self._horizon)
+        horizon = self._conf[CONF_LOOK_AHEAD_HOURS]
+        res['coming_end'] = now + datetime.timedelta(hours=horizon)
 
         spot_now = self.get_spot_price(now)
         res['spot_price_now'] = spot_now
@@ -211,22 +209,16 @@ class HeatingStrategy(Entity):
 
     @property
     def state(self):
-        """Return the state of the device."""
         d = self.data()
         if d is None:
             return None
 
         LOGGER.info(f"Price now: {d['price_now']}, Price coming: {d['price_coming']}, Average price: {d['average_price']}, Delta: {d['delta']}, PricePercent: {d['delta_percent']}")
 
-        if d['delta_percent'] > self._percent:
+        percent = self._conf[CONF_THRESHOLD_PERCENT]
+        if d['delta_percent'] > percent:
             return "BOOST"
-        if d['delta_percent'] < -self._percent:
+        if d['delta_percent'] < -percent:
             return "SAVE"
         return "NORMAL"
-
-
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
-    """Setup component."""
-    LOGGER.info("jimmy async_setup_platform")
-    async_add_entities([HeatingStrategy()])
 

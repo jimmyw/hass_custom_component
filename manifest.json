@@ -1,7 +1,8 @@
 {
   "domain": "jimmy_custom",
   "name": "Jimmy Custom",
-  "version": "4.3.0",
+  "version": "5.0.0",
+  "config_flow": true,
   "codeowners": ["@jimmyw"],
   "documentation": "https://github.com/jimmyw",
   "issue_tracker": "https://github.com/jimmyw",
