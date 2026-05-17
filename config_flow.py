@@ -39,6 +39,10 @@ class JimmyCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    def async_get_options_flow(config_entry):
+        return JimmyCustomOptionsFlow(config_entry)
+
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         if user_input is not None:
@@ -65,3 +69,40 @@ class JimmyCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         })
 
         return self.async_show_form(step_id="user", data_schema=schema)
+
+
+class JimmyCustomOptionsFlow(config_entries.OptionsFlow):
+    """Handle options for an existing entry."""
+
+    def __init__(self, config_entry):
+        self._config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        """Manage the options."""
+        if user_input is not None:
+            self.hass.config_entries.async_update_entry(
+                self._config_entry,
+                title=user_input[CONF_NAME],
+                data={**self._config_entry.data, **user_input},
+            )
+            return self.async_create_entry(title="", data={})
+
+        current = self._config_entry.data
+        schema = vol.Schema({
+            vol.Required(CONF_NAME, default=current.get(CONF_NAME, "Heating strategy")): str,
+            vol.Required(CONF_NORDPOOL_ENTITY, default=current.get(CONF_NORDPOOL_ENTITY, DEFAULTS[CONF_NORDPOOL_ENTITY])): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor"),
+            ),
+            vol.Required(CONF_SOLAR_FORECAST_DOMAIN, default=current.get(CONF_SOLAR_FORECAST_DOMAIN, DEFAULTS[CONF_SOLAR_FORECAST_DOMAIN])): str,
+            vol.Required(CONF_TIBBER_FEE, default=current.get(CONF_TIBBER_FEE, DEFAULTS[CONF_TIBBER_FEE])): vol.Coerce(float),
+            vol.Required(CONF_GRID_FEE, default=current.get(CONF_GRID_FEE, DEFAULTS[CONF_GRID_FEE])): vol.Coerce(float),
+            vol.Required(CONF_VAT_MULTIPLIER, default=current.get(CONF_VAT_MULTIPLIER, DEFAULTS[CONF_VAT_MULTIPLIER])): vol.Coerce(float),
+            vol.Required(CONF_SOLAR_SELL_ADDER, default=current.get(CONF_SOLAR_SELL_ADDER, DEFAULTS[CONF_SOLAR_SELL_ADDER])): vol.Coerce(float),
+            vol.Required(CONF_HEATING_LOAD_KW, default=current.get(CONF_HEATING_LOAD_KW, DEFAULTS[CONF_HEATING_LOAD_KW])): vol.Coerce(float),
+            vol.Required(CONF_BASE_LOAD_KW, default=current.get(CONF_BASE_LOAD_KW, DEFAULTS[CONF_BASE_LOAD_KW])): vol.Coerce(float),
+            vol.Required(CONF_LOOK_AHEAD_HOURS, default=current.get(CONF_LOOK_AHEAD_HOURS, DEFAULTS[CONF_LOOK_AHEAD_HOURS])): vol.Coerce(int),
+            vol.Required(CONF_THRESHOLD_PERCENT, default=current.get(CONF_THRESHOLD_PERCENT, DEFAULTS[CONF_THRESHOLD_PERCENT])): vol.Coerce(float),
+            vol.Required(CONF_MIN_DELTA, default=current.get(CONF_MIN_DELTA, DEFAULTS[CONF_MIN_DELTA])): vol.Coerce(float),
+        })
+
+        return self.async_show_form(step_id="init", data_schema=schema)

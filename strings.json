@@ -19,5 +19,26 @@
         }
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Heating Strategy Options",
+        "data": {
+          "name": "Strategy name",
+          "nordpool_entity": "Nordpool price sensor",
+          "solar_forecast_domain": "Solar forecast integration domain",
+          "tibber_fee": "Electricity supplier fee (SEK/kWh)",
+          "grid_fee": "Grid transfer fee incl. energy tax (SEK/kWh)",
+          "vat_multiplier": "VAT multiplier (e.g. 1.25 for 25%)",
+          "solar_sell_adder": "Solar sell-back adder (SEK/kWh)",
+          "heating_load_kw": "Heating system load (kW)",
+          "base_load_kw": "Household base load (kW)",
+          "look_ahead_hours": "Look-ahead window (hours)",
+          "threshold_percent": "BOOST/SAVE threshold (%)",
+          "min_delta": "Minimum price difference (SEK/kWh)"
+        }
+      }
+    }
   }
 }

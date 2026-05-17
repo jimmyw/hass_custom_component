@@ -33,6 +33,22 @@ async def async_setup_entry(
 ) -> None:
     """Set up the sensor from a config entry."""
     LOGGER.info("jimmy_custom sensor async_setup_entry: %s", entry.title)
+    LOGGER.debug(
+        "Config: nordpool=%s, solar_domain=%s, tibber_fee=%.2f, grid_fee=%.2f, "
+        "vat=%.2f, sell_adder=%.2f, heating=%.1f kW, base_load=%.1f kW, "
+        "horizon=%dh, threshold=%.0f%%, min_delta=%.2f SEK/kWh",
+        entry.data.get(CONF_NORDPOOL_ENTITY),
+        entry.data.get(CONF_SOLAR_FORECAST_DOMAIN),
+        entry.data.get(CONF_TIBBER_FEE, 0),
+        entry.data.get(CONF_GRID_FEE, 0),
+        entry.data.get(CONF_VAT_MULTIPLIER, 0),
+        entry.data.get(CONF_SOLAR_SELL_ADDER, 0),
+        entry.data.get(CONF_HEATING_LOAD_KW, 0),
+        entry.data.get(CONF_BASE_LOAD_KW, 0),
+        entry.data.get(CONF_LOOK_AHEAD_HOURS, 0),
+        entry.data.get(CONF_THRESHOLD_PERCENT, 0),
+        entry.data.get(CONF_MIN_DELTA, 0),
+    )
     async_add_entities([HeatingStrategy(entry)])
 
 
