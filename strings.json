@@ -13,7 +13,8 @@
           "solar_sell_adder": "Solar sell-back adder (SEK/kWh)",
           "heating_load_kw": "Heating system load (kW)",
           "look_ahead_hours": "Look-ahead window (hours)",
-          "threshold_percent": "BOOST/SAVE threshold (%)"
+          "threshold_percent": "BOOST/SAVE threshold (%)",
+          "min_delta": "Minimum price difference (SEK/kWh)"
         }
       }
     }

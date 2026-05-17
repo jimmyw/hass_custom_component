@@ -16,6 +16,7 @@ CONF_SOLAR_SELL_ADDER = "solar_sell_adder"
 CONF_HEATING_LOAD_KW = "heating_load_kw"
 CONF_LOOK_AHEAD_HOURS = "look_ahead_hours"
 CONF_THRESHOLD_PERCENT = "threshold_percent"
+CONF_MIN_DELTA = "min_delta"
 
 DEFAULTS = {
     CONF_NORDPOOL_ENTITY: "sensor.nordpool_kwh_se3_sek_3_10_0",
@@ -27,6 +28,7 @@ DEFAULTS = {
     CONF_HEATING_LOAD_KW: 3.5,
     CONF_LOOK_AHEAD_HOURS: 3,
     CONF_THRESHOLD_PERCENT: 20.0,
+    CONF_MIN_DELTA: 0.30,
 }
 
 
@@ -56,6 +58,7 @@ class JimmyCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_HEATING_LOAD_KW, default=DEFAULTS[CONF_HEATING_LOAD_KW]): vol.Coerce(float),
             vol.Required(CONF_LOOK_AHEAD_HOURS, default=DEFAULTS[CONF_LOOK_AHEAD_HOURS]): vol.Coerce(int),
             vol.Required(CONF_THRESHOLD_PERCENT, default=DEFAULTS[CONF_THRESHOLD_PERCENT]): vol.Coerce(float),
+            vol.Required(CONF_MIN_DELTA, default=DEFAULTS[CONF_MIN_DELTA]): vol.Coerce(float),
         })
 
         return self.async_show_form(step_id="user", data_schema=schema)

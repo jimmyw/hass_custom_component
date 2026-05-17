@@ -19,6 +19,7 @@ from .config_flow import (
     CONF_HEATING_LOAD_KW,
     CONF_LOOK_AHEAD_HOURS,
     CONF_THRESHOLD_PERCENT,
+    CONF_MIN_DELTA,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -216,9 +217,11 @@ class HeatingStrategy(Entity):
         LOGGER.info(f"Price now: {d['price_now']}, Price coming: {d['price_coming']}, Average price: {d['average_price']}, Delta: {d['delta']}, PricePercent: {d['delta_percent']}")
 
         percent = self._conf[CONF_THRESHOLD_PERCENT]
-        if d['delta_percent'] > percent:
+        min_delta = self._conf[CONF_MIN_DELTA]
+        abs_delta = abs(d['delta'])
+        if d['delta_percent'] > percent and abs_delta >= min_delta:
             return "BOOST"
-        if d['delta_percent'] < -percent:
+        if d['delta_percent'] < -percent and abs_delta >= min_delta:
             return "SAVE"
         return "NORMAL"
 
