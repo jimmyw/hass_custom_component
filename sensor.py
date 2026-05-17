@@ -152,31 +152,38 @@ class HeatingStrategy(Entity):
         solar_kwh = self.get_solar_forecast_kwh(hour)
         if solar_kwh <= 0:
             LOGGER.debug("Effective price at %s: %.4f (no solar)", target_hour, consumer)
-            return consumer
+            return {'price': consumer, 'consumer': consumer, 'sell': spot + self._conf[CONF_SOLAR_SELL_ADDER], 'solar_percent': 0.0, 'solar_available': 0.0}
         c = self._conf
         sell_price = spot + c[CONF_SOLAR_SELL_ADDER]
         available_solar = max(solar_kwh - c[CONF_BASE_LOAD_KW], 0.0)
         solar_fraction = min(available_solar / c[CONF_HEATING_LOAD_KW], 1.0)
         if solar_fraction <= 0:
             LOGGER.debug("Effective price at %s: %.4f (solar %.2f kWh below base load %.1f kW)", target_hour, consumer, solar_kwh, c[CONF_BASE_LOAD_KW])
-            return consumer
+            return {'price': consumer, 'consumer': consumer, 'sell': sell_price, 'solar_percent': 0.0, 'solar_available': 0.0}
         effective = solar_fraction * sell_price + (1.0 - solar_fraction) * consumer
         LOGGER.debug("Effective price at %s: %.4f (solar=%.1f%%, avail=%.2f kWh, consumer=%.4f, sell=%.4f)", target_hour, effective, solar_fraction * 100, available_solar, consumer, sell_price)
-        return effective
+        return {'price': effective, 'consumer': consumer, 'sell': sell_price, 'solar_percent': round(solar_fraction * 100, 1), 'solar_available': round(available_solar, 2)}
 
     def get_effective_prices_in_range(self, time_from, time_to):
         """Get effective prices for all slots in a time range."""
-        prices = []
+        slots = []
         for entry in self.get_nordpool_raw_prices():
             start = entry.get('start')
             value = entry.get('value')
             if start is None or value is None:
                 continue
             if start >= time_from and start < time_to:
-                eff = self.get_effective_price(value, start)
-                if eff is not None:
-                    prices.append(eff)
-        return prices
+                result = self.get_effective_price(value, start)
+                if result is not None:
+                    slots.append({
+                        'start': start,
+                        'price': round(result['price'], 4),
+                        'consumer': round(result['consumer'], 4),
+                        'sell': round(result['sell'], 4),
+                        'solar_percent': result['solar_percent'],
+                        'solar_available': result['solar_available'],
+                    })
+        return slots
 
     @property
     def extra_state_attributes(self):
@@ -202,10 +209,15 @@ class HeatingStrategy(Entity):
         hour_now = now.replace(minute=0, second=0, microsecond=0)
         res['solar_now_kwh'] = self.get_solar_forecast_kwh(hour_now)
 
-        res['price_now'] = self.get_effective_price(spot_now, now) if spot_now is not None else None
-        coming_prices = self.get_effective_prices_in_range(res['coming_start'], res['coming_end'])
+        eff_now = self.get_effective_price(spot_now, now) if spot_now is not None else None
+        res['price_now'] = eff_now['price'] if eff_now else None
+        res['solar_percent_now'] = eff_now['solar_percent'] if eff_now else 0.0
+        res['solar_available_now'] = eff_now['solar_available'] if eff_now else 0.0
+        coming_slots = self.get_effective_prices_in_range(res['coming_start'], res['coming_end'])
+        coming_prices = [s['price'] for s in coming_slots]
         res['price_coming'] = sum(coming_prices) / len(coming_prices) if coming_prices else None
         res['coming_slots'] = len(coming_prices)
+        res['effective_prices'] = coming_slots
 
         all_prices = ([res['price_now']] if res['price_now'] is not None else []) + coming_prices
         res['average_price'] = sum(all_prices) / len(all_prices) if all_prices else None
