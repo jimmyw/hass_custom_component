@@ -49,10 +49,13 @@ async def async_setup_entry(
         entry.data.get(CONF_THRESHOLD_PERCENT, 0),
         entry.data.get(CONF_MIN_DELTA, 0),
     )
-    async_add_entities([HeatingStrategy(entry)])
+    effective_price = EffectivePrice(entry)
+    async_add_entities([effective_price, HeatingStrategy(entry, effective_price)])
 
 
-class HeatingStrategy(Entity):
+class EffectivePrice(Entity):
+    """Sensor showing the current effective electricity price with 24h forecast."""
+
     def __init__(self, entry: ConfigEntry):
         self._entry = entry
         self._attr_has_entity_name = True
@@ -63,19 +66,23 @@ class HeatingStrategy(Entity):
 
     @property
     def name(self):
-        return self._conf[CONF_NAME]
+        return f"{self._conf[CONF_NAME]} effective price"
+
+    @property
+    def unique_id(self):
+        return f"effective_price_{self._entry.entry_id}"
+
+    @property
+    def icon(self):
+        return "mdi:currency-usd"
+
+    @property
+    def unit_of_measurement(self):
+        return "SEK/kWh"
 
     @property
     def available(self):
         return True
-
-    @property
-    def icon(self):
-        return "mdi:thermometer"
-
-    @property
-    def unique_id(self):
-        return f"heating_strategy_{self._entry.entry_id}"
 
     def get_nordpool_raw_prices(self):
         """Get raw today+tomorrow price entries from Nordpool sensor."""
@@ -186,15 +193,76 @@ class HeatingStrategy(Entity):
         return slots
 
     @property
+    def state(self):
+        if not self.hass:
+            return None
+        now = dt.now()
+        spot = self.get_spot_price(now)
+        if spot is None:
+            return None
+        result = self.get_effective_price(spot, now)
+        if result is None:
+            return None
+        return round(result['price'], 4)
+
+    @property
+    def extra_state_attributes(self):
+        if not self.hass:
+            return None
+        now = dt.now()
+        end = now + datetime.timedelta(hours=24)
+        slots = self.get_effective_prices_in_range(now.replace(minute=0, second=0, microsecond=0), end)
+
+        spot = self.get_spot_price(now)
+        eff_now = self.get_effective_price(spot, now) if spot else None
+
+        return {
+            'spot_price': spot,
+            'consumer_price': eff_now['consumer'] if eff_now else None,
+            'sell_price': eff_now['sell'] if eff_now else None,
+            'solar_percent': eff_now['solar_percent'] if eff_now else 0.0,
+            'solar_available': eff_now['solar_available'] if eff_now else 0.0,
+            'forecast_24h': slots,
+        }
+
+
+class HeatingStrategy(Entity):
+    def __init__(self, entry: ConfigEntry, effective_price: EffectivePrice):
+        self._entry = entry
+        self._effective_price = effective_price
+        self._attr_has_entity_name = True
+
+    @property
+    def _conf(self):
+        return self._entry.data
+
+    @property
+    def name(self):
+        return self._conf[CONF_NAME]
+
+    @property
+    def available(self):
+        return True
+
+    @property
+    def icon(self):
+        return "mdi:thermometer"
+
+    @property
+    def unique_id(self):
+        return f"heating_strategy_{self._entry.entry_id}"
+
+    @property
     def extra_state_attributes(self):
         return self.data()
 
     def data(self):
+        ep = self._effective_price
         res = {}
         now = dt.now()
         res['now'] = now
         res['coming_start'] = now.replace(second=0, microsecond=0)
-        for entry in self.get_nordpool_raw_prices():
+        for entry in ep.get_nordpool_raw_prices():
             if (entry.get('start') is not None
                     and entry.get('end') is not None
                     and entry['start'] <= now < entry['end']):
@@ -203,17 +271,17 @@ class HeatingStrategy(Entity):
         horizon = self._conf[CONF_LOOK_AHEAD_HOURS]
         res['coming_end'] = now + datetime.timedelta(hours=horizon)
 
-        spot_now = self.get_spot_price(now)
+        spot_now = ep.get_spot_price(now)
         res['spot_price_now'] = spot_now
-        res['consumer_price_now'] = self.get_consumer_price(spot_now)
+        res['consumer_price_now'] = ep.get_consumer_price(spot_now)
         hour_now = now.replace(minute=0, second=0, microsecond=0)
-        res['solar_now_kwh'] = self.get_solar_forecast_kwh(hour_now)
+        res['solar_now_kwh'] = ep.get_solar_forecast_kwh(hour_now)
 
-        eff_now = self.get_effective_price(spot_now, now) if spot_now is not None else None
+        eff_now = ep.get_effective_price(spot_now, now) if spot_now is not None else None
         res['price_now'] = eff_now['price'] if eff_now else None
         res['solar_percent_now'] = eff_now['solar_percent'] if eff_now else 0.0
         res['solar_available_now'] = eff_now['solar_available'] if eff_now else 0.0
-        coming_slots = self.get_effective_prices_in_range(res['coming_start'], res['coming_end'])
+        coming_slots = ep.get_effective_prices_in_range(res['coming_start'], res['coming_end'])
         coming_prices = [s['price'] for s in coming_slots]
         res['price_coming'] = sum(coming_prices) / len(coming_prices) if coming_prices else None
         res['coming_slots'] = len(coming_prices)
