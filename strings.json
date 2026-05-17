@@ -12,6 +12,7 @@
           "vat_multiplier": "VAT multiplier (e.g. 1.25 for 25%)",
           "solar_sell_adder": "Solar sell-back adder (SEK/kWh)",
           "heating_load_kw": "Heating system load (kW)",
+          "base_load_kw": "Household base load (kW)",
           "look_ahead_hours": "Look-ahead window (hours)",
           "threshold_percent": "BOOST/SAVE threshold (%)",
           "min_delta": "Minimum price difference (SEK/kWh)"

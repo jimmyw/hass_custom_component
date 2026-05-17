@@ -17,6 +17,7 @@ from .config_flow import (
     CONF_VAT_MULTIPLIER,
     CONF_SOLAR_SELL_ADDER,
     CONF_HEATING_LOAD_KW,
+    CONF_BASE_LOAD_KW,
     CONF_LOOK_AHEAD_HOURS,
     CONF_THRESHOLD_PERCENT,
     CONF_MIN_DELTA,
@@ -138,9 +139,13 @@ class HeatingStrategy(Entity):
             return consumer
         c = self._conf
         sell_price = spot + c[CONF_SOLAR_SELL_ADDER]
-        solar_fraction = min(solar_kwh / c[CONF_HEATING_LOAD_KW], 1.0)
+        available_solar = max(solar_kwh - c[CONF_BASE_LOAD_KW], 0.0)
+        solar_fraction = min(available_solar / c[CONF_HEATING_LOAD_KW], 1.0)
+        if solar_fraction <= 0:
+            LOGGER.debug("Effective price at %s: %.4f (solar %.2f kWh below base load %.1f kW)", target_hour, consumer, solar_kwh, c[CONF_BASE_LOAD_KW])
+            return consumer
         effective = solar_fraction * sell_price + (1.0 - solar_fraction) * consumer
-        LOGGER.debug("Effective price at %s: %.4f (solar=%.1f%%, consumer=%.4f, sell=%.4f)", target_hour, effective, solar_fraction * 100, consumer, sell_price)
+        LOGGER.debug("Effective price at %s: %.4f (solar=%.1f%%, avail=%.2f kWh, consumer=%.4f, sell=%.4f)", target_hour, effective, solar_fraction * 100, available_solar, consumer, sell_price)
         return effective
 
     def get_effective_prices_in_range(self, time_from, time_to):
